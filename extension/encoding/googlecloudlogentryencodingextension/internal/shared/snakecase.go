@@ -5,6 +5,7 @@ package shared // import "github.com/open-telemetry/opentelemetry-collector-cont
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/iancoleman/strcase"
 )
@@ -20,5 +21,9 @@ var digitToLetter = regexp.MustCompile(`(\d)_([a-z])`)
 // boundaries like "k8s" into "k8_s".
 func ToSnakeCase(s, ignore string) string {
 	result := strcase.ToSnakeWithIgnore(s, ignore)
+	// Fast path: if there are no digits, skip the regex entirely
+	if !strings.ContainsAny(result, "0123456789") {
+		return result
+	}
 	return digitToLetter.ReplaceAllString(result, "${1}${2}")
 }
