@@ -39,6 +39,16 @@ const (
 
 var errMissingTimestamp = errors.New("missing timestamp")
 
+// DefaultTimeFormats returns the default list of time format layouts used to parse
+// Azure log record timestamps that do not conform to ISO 8601.
+func DefaultTimeFormats() []string {
+	return []string{
+		"01/02/2006 15:04:05",
+		"1/2/2006 3:04:05.000 PM -07:00",
+		"1/2/2006 3:04:05 PM -07:00",
+	}
+}
+
 // azureRecords represents an array of Azure log records
 // as exported via an Azure Event Hub
 type azureRecords struct {

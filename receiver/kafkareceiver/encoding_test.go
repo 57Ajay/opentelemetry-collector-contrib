@@ -469,3 +469,111 @@ type extensionsHost map[component.ID]component.Component
 func (h extensionsHost) GetExtensions() map[component.ID]component.Component {
 	return h
 }
+
+var azureUSFormatPayloads = []struct {
+	name      string
+	timestamp string
+	payload   []byte
+}{
+	{
+		name:      "US format MM/DD/YYYY HH:MM:SS",
+		timestamp: "02/20/2026 14:54:26",
+		payload: []byte(`{"records":[{
+			"time": "02/20/2026 14:54:26",
+			"resourceId": "/subscriptions/sub123/resourceGroups/rg/providers/Microsoft.Web/sites/myfuncapp",
+			"operationName": "Microsoft.Web/sites/functions/log",
+			"category": "FunctionAppLogs",
+			"level": "Informational",
+			"properties": {
+				"appName": "myfuncapp",
+				"functionName": "MyFunction",
+				"message": "Function started"
+			}
+		}]}`),
+	},
+	{
+		name:      "US format with milliseconds MM/DD/YYYY HH:MM:SS.mmm",
+		timestamp: "02/20/2026 14:54:26.123",
+		payload: []byte(`{"records":[{
+			"time": "02/20/2026 14:54:26.123",
+			"resourceId": "/subscriptions/sub123/resourceGroups/rg/providers/Microsoft.Web/sites/myfuncapp",
+			"operationName": "Microsoft.Web/sites/functions/log",
+			"category": "FunctionAppLogs",
+			"level": "Warning",
+			"properties": {
+				"appName": "myfuncapp",
+				"functionName": "MyFunction",
+				"message": "Function warning"
+			}
+		}]}`),
+	},
+	{
+		name: "mixed batch: ISO record passes, US record is silently dropped",
+		payload: []byte(`{"records":[
+			{
+				"time": "2026-02-20T14:54:26.000Z",
+				"resourceId": "/subscriptions/sub123/resourceGroups/rg/providers/Microsoft.Web/sites/myfuncapp",
+				"operationName": "Microsoft.Web/sites/functions/log",
+				"category": "FunctionAppLogs",
+				"level": "Informational",
+				"properties": {"appName": "myfuncapp", "message": "ISO record - should pass"}
+			},
+			{
+				"time": "02/20/2026 14:54:27",
+				"resourceId": "/subscriptions/sub123/resourceGroups/rg/providers/Microsoft.Web/sites/myfuncapp",
+				"operationName": "Microsoft.Web/sites/functions/log",
+				"category": "FunctionAppLogs",
+				"level": "Informational",
+				"properties": {"appName": "myfuncapp", "message": "US format record - currently DROPPED"}
+			}
+		]}`),
+	},
+}
+
+func TestAzureResourceLogsUSFormatTimestamp_DropsRecords(t *testing.T) {
+	t.Run("single US-format record is dropped (zero log count)", func(t *testing.T) {
+		u := mustNewLogsUnmarshaler(t, "azure_resource_logs", componenttest.NewNopHost())
+		out, err := u.UnmarshalLogs(azureUSFormatPayloads[0].payload)
+		require.NoError(t, err)
+
+		assert.Equal(t, 1, out.LogRecordCount(),
+			"US-format timestamp %q should produce 1 log record, but got 0 — record was silently dropped",
+			azureUSFormatPayloads[0].timestamp,
+		)
+	})
+
+	t.Run("US format with milliseconds is dropped", func(t *testing.T) {
+		u := mustNewLogsUnmarshaler(t, "azure_resource_logs", componenttest.NewNopHost())
+		out, err := u.UnmarshalLogs(azureUSFormatPayloads[1].payload)
+		require.NoError(t, err)
+
+		assert.Equal(t, 1, out.LogRecordCount(),
+			"US-format timestamp with ms %q should produce 1 log record, but got 0",
+			azureUSFormatPayloads[1].timestamp,
+		)
+	})
+
+	t.Run("mixed batch: only ISO record survives, US record silently dropped", func(t *testing.T) {
+		u := mustNewLogsUnmarshaler(t, "azure_resource_logs", componenttest.NewNopHost())
+		out, err := u.UnmarshalLogs(azureUSFormatPayloads[2].payload)
+		require.NoError(t, err)
+
+		assert.Equal(t, 2, out.LogRecordCount(),
+			"Batch of 2 records should produce 2 log records — the US-format record is silently dropped, count is 1",
+		)
+	})
+}
+
+func TestAzureResourceLogsISO8601_StillWorks(t *testing.T) {
+	isoPayload := []byte(`{"records":[{
+		"time": "2026-02-20T14:54:26.000Z",
+		"resourceId": "/subscriptions/sub123/resourceGroups/rg/providers/Microsoft.Web/sites/myfuncapp",
+		"operationName": "Microsoft.Web/sites/functions/log",
+		"category": "FunctionAppLogs"
+	}]}`)
+
+	u := mustNewLogsUnmarshaler(t, "azure_resource_logs", componenttest.NewNopHost())
+	out, err := u.UnmarshalLogs(isoPayload)
+	require.NoError(t, err)
+	assert.Equal(t, 1, out.LogRecordCount(), "ISO 8601 timestamp must continue to work")
+}

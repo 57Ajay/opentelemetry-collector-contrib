@@ -1,0 +1,12 @@
+change_type: bug_fix
+component: receiver/kafka
+note: Fix azure_resource_logs encoding dropping records with US-format timestamps (e.g. "02/20/2026 14:54:26") emitted by Azure Functions on certain SKUs.
+issues: [46267]
+subtext: |
+  The built-in `azure_resource_logs` encoding was constructing the Azure unmarshaler
+  without any fallback time formats, so only ISO 8601 timestamps were accepted.
+  Azure Functions logs on some hosting plans emit timestamps in US locale format
+  (MM/DD/YYYY HH:MM:SS), which were silently dropped before reaching any processor.
+  Fixed by passing `DefaultTimeFormats()` (newly added to `pkg/translator/azure`)
+  when constructing the unmarshaler, consistent with how `azureencodingextension` already handles this.
+change_logs: [user]

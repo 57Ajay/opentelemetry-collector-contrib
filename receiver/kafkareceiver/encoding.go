@@ -74,8 +74,9 @@ func newLogsUnmarshaler(encoding string, set receiver.Settings, host component.H
 		return unmarshaler.JSONLogsUnmarshaler{}, nil
 	case "azure_resource_logs":
 		return &azure.ResourceLogsUnmarshaler{
-			Version: set.BuildInfo.Version,
-			Logger:  set.Logger,
+			Version:     set.BuildInfo.Version,
+			Logger:      set.Logger,
+			TimeFormats: azure.DefaultTimeFormats(),
 		}, nil
 	case "text":
 		return unmarshaler.NewTextLogsUnmarshaler("utf-8")
