@@ -32,8 +32,7 @@ func newHTTPClient(logger *zap.Logger, maxIdle, requestTimeout int, noVerify boo
 		InsecureSkipVerify: noVerify,
 	}
 
-	finalProxyAddress := getProxyAddress(proxyAddress)
-	proxyURL, err := getProxyURL(finalProxyAddress)
+	proxyFunc, err := getProxyFunc(proxyAddress)
 	if err != nil {
 		logger.Error("unable to obtain proxy URL", zap.Error(err))
 		return nil, err
@@ -41,7 +40,7 @@ func newHTTPClient(logger *zap.Logger, maxIdle, requestTimeout int, noVerify boo
 	transport := &http.Transport{
 		MaxIdleConnsPerHost: maxIdle,
 		TLSClientConfig:     tls,
-		Proxy:               http.ProxyURL(proxyURL),
+		Proxy:               proxyFunc,
 	}
 
 	// is not enabled by default as we configure TLSClientConfig for supporting SSL to data plane.
@@ -56,6 +55,21 @@ func newHTTPClient(logger *zap.Logger, maxIdle, requestTimeout int, noVerify boo
 		Timeout:   time.Second * time.Duration(requestTimeout),
 	}
 	return http, err
+}
+
+// getProxyFunc returns an appropriate proxy function for http.Transport.
+// When no explicit proxyAddress is configured, it delegates to
+// http.ProxyFromEnvironment which correctly respects NO_PROXY.
+// When an explicit proxyAddress is configured, it uses http.ProxyURL.
+func getProxyFunc(proxyAddress string) (func(*http.Request) (*url.URL, error), error) {
+	if proxyAddress == "" {
+		return http.ProxyFromEnvironment, nil
+	}
+	proxyURL, err := url.Parse(proxyAddress)
+	if err != nil {
+		return nil, err
+	}
+	return http.ProxyURL(proxyURL), nil
 }
 
 func getProxyAddress(proxyAddress string) string {
